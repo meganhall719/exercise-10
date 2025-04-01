@@ -1,0 +1,118 @@
+---
+title: "Exercise 11"
+format: html
+editor: visual
+---
+
+```{r}
+
+library(tidyverse)
+
+#loading data in 
+
+library(dplyr)
+f <- "https://raw.githubusercontent.com/difiore/ada-datasets/refs/heads/main/AVONETdataset1.csv"
+d <- read_csv(f, col_names = TRUE)
+head(d)
+
+d <- d |>
+  select("Species1", "Family1", "Order1", "Beak.Length_Culmen", "Beak.Width", 
+         "Beak.Depth", "Tarsus.Length", "Wing.Length", "Tail.Length", "Mass", 
+         "Habitat", "Migration", "Trophic.Level", "Trophic.Niche", "Min.Latitude", 
+         "Max.Latitude", "Centroid.Latitude", "Primary.Lifestyle", "Range.Size")
+
+#exploratory data analysis 
+library(skimr)
+skim(d)
+str(d)
+
+
+library(purrr)
+
+
+map_df(d, function(x) {
+  tibble(
+    is_character = is.character(x),
+    is_factor = is.factor(x),
+    is_numeric = is.numeric(x),
+    unique_values = length(unique(x))
+  )
+}, .id = "variable")
+
+#variables that are categoric are
+#Beak.Length_Culmen, Beak.Width, Beak.Depth, Tarsus.Length, Wing.Length, Tail.Length, Mass
+
+# Variables that are categorical 
+#Species1, Family1, Order1, 
+```
+
+## Step 1 
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+
+f <- "https://raw.githubusercontent.com/difiore/ada-datasets/refs/heads/main/AVONETdataset1.csv"
+d <- read_csv(f, col_names = TRUE)
+
+d <- d |>
+  select("Species1", "Family1", "Order1", "Beak.Length_Culmen", "Beak.Width", 
+         "Beak.Depth", "Tarsus.Length", "Wing.Length", "Tail.Length", "Mass", 
+         "Habitat", "Migration", "Trophic.Level", "Trophic.Niche", "Min.Latitude", 
+         "Max.Latitude", "Centroid.Latitude", "Primary.Lifestyle", "Range.Size")
+
+# Convert Migration from numeric to factor
+d$Migration <- as.factor(d$Migration)
+
+# Create a boxplot for log(Mass) vs Trophic.Level
+# Drop records where Trophic.Level is missing
+p1 <- d |>
+  filter(!is.na(Trophic.Level), !is.na(Mass)) |>
+  ggplot(aes(x = Trophic.Level, y = log(Mass))) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Boxplot of log(Mass) by Trophic Level",
+       x = "Trophic Level",
+       y = "log(Mass)")
+
+
+# Create a boxplot for log(Mass) vs Migration
+# Drop records where Migration is missing
+p2 <- d |>
+  filter(!is.na(Migration), !is.na(Mass)) |>
+  ggplot(aes(x = Migration, y = log(Mass))) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Boxplot of log(Mass) by Migration Type",
+       x = "Migration Type",
+       y = "log(Mass)")
+
+# Display the plots
+print(p1)
+print(p2)
+
+ggplot(data = d |> drop_na(Migration), 
+       aes(x = Migration, y = log(Mass)))+
+  geom_boxplot()+
+  geom_jitter()
+```
+## Step 2 
+Run linear models using the lm() function to look at the relationship between log(Mass) and Trophic.Level and between log(Mass) and Migration.
+
+```{r}
+
+trophic_model<- lm(log(Mass) ~ Trophic.Level, data = d)
+summary(trophic_model)
+
+migration_model <-lm(log(Mass)~ as.factor(Migration), data = d)
+migration2
+summary(migration_model)
+
+ggplot(data = d |> drop_na(Trophic.Level), aes(x = Trophic.Level, y = log(Mass))) + geom_boxplot()
+```
+
+
+```{r}
+ggplot(data = d |> drop_na(Trophic.Level), aes(x = Trophic.Level, y = log(Mass))) + geom_boxplot()
+```
