@@ -4,6 +4,10 @@ format: html
 editor: visual
 ---
 
+# Challenge 1
+
+#### loading in data-set
+
 ```{r}
 
 library(tidyverse)
@@ -26,27 +30,11 @@ library(skimr)
 skim(d)
 str(d)
 
-
-library(purrr)
-
-
-map_df(d, function(x) {
-  tibble(
-    is_character = is.character(x),
-    is_factor = is.factor(x),
-    is_numeric = is.numeric(x),
-    unique_values = length(unique(x))
-  )
-}, .id = "variable")
-
-#variables that are categoric are
-#Beak.Length_Culmen, Beak.Width, Beak.Depth, Tarsus.Length, Wing.Length, Tail.Length, Mass
-
-# Variables that are categorical 
-#Species1, Family1, Order1, 
 ```
 
-## Step 1 
+####### variables that are categorical : Habitat, Trophic.Level, Trophic. Niche, and Migration. All the rest are numeric
+
+## Step 1 Make boxplots of log(Mass) in relation to Trophic.Level and Migration behavior type have to convert migration to a factor
 
 ```{r}
 library(dplyr)
@@ -65,7 +53,7 @@ d <- d |>
 # Convert Migration from numeric to factor
 d$Migration <- as.factor(d$Migration)
 
-# Create a boxplot for log(Mass) vs Trophic.Level
+#  boxplot for log(Mass) vs Trophic.Level
 # Drop records where Trophic.Level is missing
 p1 <- d |>
   filter(!is.na(Trophic.Level), !is.na(Mass)) |>
@@ -77,7 +65,7 @@ p1 <- d |>
        y = "log(Mass)")
 
 
-# Create a boxplot for log(Mass) vs Migration
+#  boxplot for log(Mass) vs Migration
 # Drop records where Migration is missing
 p2 <- d |>
   filter(!is.na(Migration), !is.na(Mass)) |>
@@ -92,16 +80,13 @@ p2 <- d |>
 print(p1)
 print(p2)
 
-ggplot(data = d |> drop_na(Migration), 
-       aes(x = Migration, y = log(Mass)))+
-  geom_boxplot()+
-  geom_jitter()
 ```
-## Step 2 
+
+## Step 2
+
 Run linear models using the lm() function to look at the relationship between log(Mass) and Trophic.Level and between log(Mass) and Migration.
 
 ```{r}
-
 trophic_model<- lm(log(Mass) ~ Trophic.Level, data = d)
 summary(trophic_model)
 
@@ -112,7 +97,233 @@ summary(migration_model)
 ggplot(data = d |> drop_na(Trophic.Level), aes(x = Trophic.Level, y = log(Mass))) + geom_boxplot()
 ```
 
+#### When we look at the summary outputs log(mass) IS significantly associated for trophic level and migration, we can see this with the low p values and the high F-stat. the F value is large enough to reject the null hypothesis.
+
+#### From the given regression coefficients returned from our migration model we know that migration level 1 was the reference level. **Migration** levels 2 and 3 are both different from **Migration** level 1.
+
+#### re-level and assess differences between the other Migration Categories
 
 ```{r}
-ggplot(data = d |> drop_na(Trophic.Level), aes(x = Trophic.Level, y = log(Mass))) + geom_boxplot()
+
+d <- d |> mutate(Migration = relevel(Migration, ref = "3"))
+m2 <- lm(log(Mass)~ Migration, data = d)
+summary(m2)
+
 ```
+
+#### According to our re-leveled model results, we see that **Migration** levels 2 and 3 are also different from one another.
+
+## Step 3 Conduct a post-hoc Tukey Honest Significant Differences test to also evaluate which **Migration** categories differ “significantly” from one another
+
+```{r}
+d1 <- d |> 
+  mutate(Migration = relevel(Migration, ref = "2"))
+migrationrelevel <- lm(log(Mass) ~ Migration, data = filter(d1, !is.na(Migration)))
+summary(migrationrelevel)
+```
+
+#### The output suggests that there are significant differences between all migration types.
+
+## Step 4 Use a permutation approach to inference to generate a null distribution of F statistic values for the model of log(Mass) in relation to Trophic.Level and calculate a p value for your original F statistic. I am using the infer package
+
+```{r}
+library(infer)
+library(broom)
+# using {infer}
+(original_F <- aov(data = d, log(Mass) ~ Trophic.Level) |>
+  tidy() |>
+  filter(term == "Trophic.Level"))
+
+d$log_Mass <- log(d$Mass)
+
+permuted_F <- d|>
+  specify(log_Mass ~ Trophic.Level) |>
+  hypothesize(null = "independence") |>
+  generate(reps = 1000, type = "permute") |>
+  calculate(stat = "F")
+
+#Calculate a p-value for F statistic 
+(p_value_F <- permuted_F |>
+  get_p_value(obs_stat = original_F$statistic, direction = "greater"))
+
+```
+
+# Challenge 2 Data Wrangling plus One- and Two-Factor ANOVA
+
+### Step 1 Create new variables and adding them to AVONET dataset
+
+```{r}
+#addiing log transformed variables to data-set 
+d$log_Beak_Length <- log(d$Beak.Length_Culmen)
+d$log_Tarsus_Length <- log(d$Tarsus.Length)
+
+#Creating models 
+beakmodel <- lm(log_Beak_Length ~ log_Mass, data = d)
+tarsusmodel <- lm(log_Tarsus_Length ~ log_Mass, data = d)
+# add residual variables to the data-set with new names
+d$Relative_Beak_Length <- residuals(beakmodel)
+d$Relative_Tarsus_Length <- residuals(tarsusmodel)                    
+```
+
+### Step 2 Make a boxplot of your new relative tarsus length variable in relation to Primary.Lifestyle and of your new relative beak length variable in relation to Trophic.Niche
+
+```{r}
+# making a boxplot for relative tarsus length in relation to primary lifestyle
+(tarsusboxplot <- ggplot(d, aes(x = Primary.Lifestyle, y = Relative_Tarsus_Length)) + geom_boxplot(outlier.shape = NA, alpha = 0.7) + geom_jitter(width = 0.2, alpha = 0.3) + theme_minimal() + labs(title = "relative tarsus Length by primary lifestyle", x = "primary lifestyle", y = "relative tarsus length"))
+
+# making a boxplot for relative beak length in relation to trophic niche
+
+ggplot(d, aes(x = Relative_Beak_Length, y = fct_reorder(Trophic.Niche, Relative_Beak_Length, median, na.rm = TRUE))) + geom_boxplot(outlier.shape = NA, alpha = 0.7) + geom_jitter(height = 0.2, alpha = 0.3) + theme_minimal() + labs(title = "Relative Beak Length by Trophic Niche", x = "Relative Beak Length", y = "Trophic Niche")
+
+```
+
+### Step 3 Run ANOVA analyses to look at the association between geographic range size and the variable Migration
+
+#### looking at the distribution of range.size
+
+```{r}
+
+migration <- d |> 
+  filter(!is.na(Migration))
+ggplot(migration, aes(x = Range.Size)) + geom_histogram() + labs(title = "Distribution of Range Size", x = "Range Size", y = "Count")
+
+#histogram with more normal fit 
+ggplot(migration, aes(x = log(Range.Size))) + geom_histogram()
+
+# qqplot 
+qqnorm(log(migration$Range.Size))
+
+# it looks like range size should be log transformed
+
+migration$log_RangeSize <- log(migration$Range.Size)
+
+```
+
+#### Analyzing if range size is associated with form of migration
+
+```{r}
+rangemodel <- aov(log_RangeSize ~ Migration, data = migration)
+summary(rangemodel)
+
+#From the model summary we can see from the F stat that migration is significantly associated with range size. the F Stat is large!
+
+range_model <- lm(log_RangeSize ~ factor(Migration), data = migration)
+summary(range_model)$r.squared
+# Our value 0.0869031 can be interpreted as migratioon behavior makes up 8.7% of the variance in range size. 
+
+```
+
+#### Regression coefficinets returned in output of the model.
+
+```{r}
+
+summary(range_model)
+#the reference was changed earlier to be model level 3 it is still set to that and  levels 1 and 2 are both different  from migration level 3. 
+
+#changing the reference to model level 2 
+migration2 <- migration |>
+  mutate(Migration = relevel(Migration, ref = "2"))
+summary(lm(log_RangeSize ~ factor(Migration), data = migration2))
+# we still see significant differences with level 2 set to the reference level. Level 1 is lower, and level 3 is higher than level 2. 
+
+
+# running TukeyHSD
+tukeychallenge2 <- TukeyHSD(aov(range_model))
+print(tukeychallenge2)
+
+#our output of the Tukey HSD suggests that there are significant differences between all the different migration types , we can see all the different combos all significant. 
+
+```
+
+### Step 4 Winnow your original data to just consider birds from the Infraorder “Passeriformes” (song birds).
+
+#### BoxPlots
+
+```{r}
+pass <- d |> filter(Order1 == "Passeriformes")
+(passeriformeslifeplot<- ggplot(pass, aes(x = Primary.Lifestyle, y = Relative_Beak_Length)) + geom_boxplot() + theme_minimal() + labs(title = "Relative Beak Length by Primary Lifestyle"))
+
+
+(passeriformestrophicplot<- ggplot(pass, aes(x = Trophic.Level, y = Relative_Beak_Length)) + geom_boxplot() + theme_minimal() + labs(title = "Relative Beak Length by Trophic Level"))
+
+(passeriformesplot <- ggplot(pass, aes(x = interaction(Primary.Lifestyle, Trophic.Level), y = Relative_Beak_Length)) + geom_boxplot() + theme_minimal() + labs(title = "Relative Beak Length by Primary Lifestyle and Trophic Level", x = "Primary Lifestyle and Trophic Level") + theme(axis.text.x = element_text(angle = 45, hjust = 1)))
+
+```
+
+```{r}
+pass <- d |> filter(Order1 == "Passeriformes")
+
+# Looking at association between relative beak length and primary lifestyle
+primarylifestyleaov <- aov(Relative_Beak_Length ~ Primary.Lifestyle, data = pass)
+summary(primarylifestyleaov)
+
+# Looking at association between relative beak length and trophic level 
+trophiclevelaov <- aov(Relative_Beak_Length ~ Trophic.Level, data = pass)
+summary(trophiclevelaov)
+
+#more linear models for each predictor separately 
+challenge2lifestyle <- lm(Relative_Beak_Length ~ (factor(Primary.Lifestyle)), data = pass)
+summary(challenge2lifestyle)
+
+challenge2trophic <- lm(Relative_Beak_Length ~ (factor(Trophic.Level)), data = pass)
+summary(challenge2trophic)
+```
+
+####### Beak length is notably influenced by lifestyle, with significant differences observed between groups. While trophic level does affect beak length, there is no substantial variation between the beak lengths of carnivores, herbivores, and omnivores
+
+## Step 5 Run a two-factor model to look at the association between relative beak length and both Primary.Lifestyle and Trophic.Level among the passeriforms.
+
+```{r}
+twofactoranova <- aov(Relative_Beak_Length ~ Primary.Lifestyle + Trophic.Level, data = pass)
+summary(twofactoranova)
+```
+
+#### I would conclude that relative beak length is related to both variables , i.e both variables are important predictors for beak length
+
+## Step 6 run an additional two-way model with the same dataset and predictors, but adding the possibility of an interaction term.
+
+```{r}
+
+interactionanova<- aov(Relative_Beak_Length ~ Primary.Lifestyle + Trophic.Level + Primary.Lifestyle:Trophic.Level, data = pass)
+
+summary(interactionanova)
+
+```
+
+##### From our summary output we see that primary lifestyle, trophic level, and the interaction between these 2 variables are all Significant predictors of relative beak length!!!!
+
+## Step 7 Use the interaction.plot() function to visualize the interaction between Primary.Lifestyle and Trophic Level
+
+```{r}
+interaction.plot(x.factor = pass$Primary.Lifestyle,trace.factor = pass$Trophic.Level,response = pass$Relative_Beak_Length, xlab = "Primary Lifestyle", ylab = "Relative Beak Length")
+```
+
+## Step 8 a general rule of thumb for “equal” variances is to compare the largest and smallest within-grouping level standard deviations and, if this value is less than 2, then it is often reasonable to presume the assumption may not be violated. Use this approach to see whether variances in across groups in your various models (e.g., for relative beak length \~ trophic level) are roughly equal
+
+```{r}
+#check the ratio of variances among different levels of predictor 
+
+beaklifecheck <- aggregate(Relative_Beak_Length ~ Primary.Lifestyle, data = pass, FUN = sd, na.rm = TRUE)
+max(beaklifecheck$Relative_Beak_Length) / min(beaklife_check$Relative_Beak_Length)
+
+#1.24 is <2
+
+beakassumcheck <- aggregate(Relative_Beak_Length ~ Trophic.Level, data = pass, FUN = sd, na.rm = TRUE)
+max(beakassumcheck$Relative_Beak_Length) / min(beak_assumptioncheck$Relative_Beak_Length)
+
+# 1.33 is <2 
+
+# a visual check of whether observations and model residuals within groups look to be normally distributed
+visuallifestyle <- residuals(challenge2lifestyle)
+par(mfrow = c(2,2))
+hist(lifestyleres, main="Beak Length Residuals", breaks=20)
+qqnorm(visuallifestyle); qqline(visuallifestyle)
+
+visualtroph <- residuals(challenge2trophic)
+par(mfrow = c(2,2)) 
+hist(trophicres, main="Beak Length Residuals for Trophic Level", breaks=20)
+qqnorm(visualtroph); qqline(visualtroph)                         
+
+```
+
+We saw that the variance ratios are under 2, but visually we see a clear deviation from normality for the residuals so we are not justified in using standard linear regression for the analyses that we did in the exercise.
